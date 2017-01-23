@@ -6,14 +6,14 @@ module Feedback_app =
 
 let%client switch_color elt =
   let elt = Eliom_content.Html.To_dom.of_element elt in
-  let pressed = Js.string "pressed" in
+  let pressed = Js.string "grey" in
   if Js.to_bool @@ elt##.classList##contains pressed then
     elt##.classList##remove pressed
   else
     elt##.classList##add pressed
 
-let%shared button_widget s1 button_class = Eliom_content.Html.D.(
-  let button = div ~a:[a_class ["button"]] [pcdata s1] in
+let%shared button_widget s color_class = Eliom_content.Html.D.(
+  let button = div ~a:[a_class ["button"; color_class; "grey"]] [pcdata s] in
   let _ = [%client
     (Lwt.async (fun () ->
       Lwt_js_events.clicks
@@ -24,7 +24,7 @@ let%shared button_widget s1 button_class = Eliom_content.Html.D.(
         ))
      : unit)
   ] in
-  div ~a:[a_class ["button_widget"; button_class]] [button]
+  button
 )
 
 let%shared status_widget name = Eliom_content.Html.D.(

@@ -2,6 +2,7 @@
     font-family: sans-serif;
 }
 div.button {
+  display: inline-block;
   width: 200px;
   height: 20px;
   padding: 50px 0;
@@ -9,6 +10,7 @@ div.button {
   text-decoration: none;
   font-weight: bold;
   border-radius: 4px;
+  margin: 0 10px 0 0;
 }
 .done {
   background-color: green;
@@ -16,13 +18,9 @@ div.button {
 .help {
   background-color: red;
 }
-.pressed {
+.grey {
   background-color: grey;
   color: white;
-}
-div.button_widget {
-  display: inline-block;
-  margin: 0 10px 0 0;
 }
 .hidden {
   display: none;
