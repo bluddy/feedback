@@ -1,0 +1,29 @@
+* {
+    font-family: sans-serif;
+}
+div.button {
+  width: 200px;
+  height: 20px;
+  padding: 50px 0;
+  text-align: center;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: 4px;
+}
+.done {
+  background-color: green;
+}
+.help {
+  background-color: red;
+}
+.pressed {
+  background-color: grey;
+  color: white;
+}
+div.button_widget {
+  display: inline-block;
+  margin: 0 10px 0 0;
+}
+.hidden {
+  display: none;
+}
