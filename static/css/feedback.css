@@ -27,3 +27,16 @@ div.button_widget {
 .hidden {
   display: none;
 }
+.student-status {
+  display: inline-block;
+  width: 100px;
+  height: 100px;
+  margin: 10px;
+  border: 3px solid #000000;
+  text-align: center;
+}
+.status_button {
+  display: inline-block;
+  width: 48%;
+  height: 70%;
+}
