@@ -12,17 +12,13 @@ module Feedback_app =
     | Need_help
   [@@deriving json]
 
-  type notify_key = AdminNotify | ClientNotify
-  type notify_details = Button of user_vars * bool
+  type notify_details =
+    | ButtonChange of string * user_vars * bool
+  [@@deriving json]
 ]
 
-(* module for notifying clients *)
-module Notify =
-  Eliom_notif.Make_Simple(struct
-    type identity = int
-    type key = notify_key
-    type notification = notify_details
-  end)
+(* events from server -> admin client *)
+let admin_push_event, admin_push_event_send = React.E.create ()
 
 let%client switch_color elt =
   let elt = Eliom_content.Html.To_dom.of_element elt in
@@ -32,12 +28,20 @@ let%client switch_color elt =
   else
     elt##.classList##add pressed
 
+(* admin status widget *)
 let%shared status_widget name = Eliom_content.Html.D.(
-  div ~a:[a_class ["student-status"]] [
-    div ~a:[a_class ["status_button"; "done"]] [pcdata ""];
-    div ~a:[a_class ["status_button"; "help"]] [pcdata ""];
-    div [pcdata name];
-  ]
+  let done_btn = 
+    div ~a:[a_class ["status_button"; "done"]] [pcdata ""]
+  in
+  let help_btn =
+    div ~a:[a_class ["status_button"; "help"]] [pcdata ""]
+  in
+  let e =
+    div ~a:[a_class ["student-status"]] [
+      done_btn; help_btn; div [pcdata name];
+    ]
+  in
+  name, e, done_btn, help_btn
 )
 
 let user_list =
@@ -56,21 +60,24 @@ let user_set = StringSet.of_list user_list
 (* users -> user_vars *)
 let user_table = Hashtbl.create 50
 
-(* receive button toggle *)
-let%server toggle_button (name, button, state) =
+(* server receive student button toggle *)
+let%server toggle_button_server (name, button, state) =
   (* Lwt_io.printf "%s, %s, %s\n" name (match button with Done -> "done" | Need_help -> "help") (if state then "true" else "false"); *)
   let buttons = Hashtbl.find user_table name in
   let new_buttons =
     if state then button::buttons
-    else List.filter (fun b -> b <> button) buttons
+    else List.filter ((<>) button) buttons
   in
   Hashtbl.replace user_table name new_buttons;
+  (* notify the admin client *)
+  admin_push_event_send (ButtonChange(name, button, state));
   Lwt.return ()
 
-(* stub for client *)
-let%client toggle_button =
-  ~%(Eliom_client.server_function [%derive.json: string * user_vars * bool] toggle_button)
+(* stub for student client->server RPC *)
+let%client toggle_button_server =
+  ~%(Eliom_client.server_function [%derive.json: string * user_vars * bool] toggle_button_server)
 
+(* student button widget *)
 let%shared button_widget name s color_class = Eliom_content.Html.D.(
   let button = div ~a:[a_class ["button"; color_class; "grey"]] [pcdata s] in
   let _ = [%client
@@ -83,8 +90,7 @@ let%shared button_widget name s color_class = Eliom_content.Html.D.(
            switch_color ~%button;
            (* change button state on server *)
            Lwt.async (fun () ->
-             toggle_button (~%name, (if ~%color_class = "done" then Done else Need_help), !state)) >>= fun () ->
-             notify ;
+             toggle_button_server (~%name, (if ~%color_class = "done" then Done else Need_help), !state));
            Lwt.return ()
         ))
      : unit)
@@ -92,7 +98,7 @@ let%shared button_widget name s color_class = Eliom_content.Html.D.(
   button
 )
 
-(* user service *)
+(* student service *)
 let _ = Eliom_content.Html.D.(
   Feedback_app.create
     ~path:(Eliom_service.Path [""])
@@ -115,15 +121,38 @@ let _ = Eliom_content.Html.D.(
                 h2 [pcdata "Forbidden access"];
               ]))
          in
-         ClientNotify.init () >>= fun () ->
-         ClientNotify.listen Update >>= fun () ->
          Lwt.return page
     )
 )
 
+(* admin client routine *)
+let%client init_admin_client status_widget_elems push_event =
+  (* save the widgets *)
+  let widget_index = Hashtbl.create 50 in
+  List.iter (fun (nm, _, don, help) -> Hashtbl.replace widget_index nm (don,help)) status_widget_elems;
+  (* update a widget via an event *)
+  let update_widget = function
+    | ButtonChange(name, button, state) -> 
+        let (don, help) = Hashtbl.find widget_index name in
+        let elt = match button with
+          | Done -> don
+          | Need_help -> help
+        in
+        let elt = Eliom_content.Html.To_dom.of_element elt in
+        let grey = Js.string "grey" in
+        if state then
+          elt##.classList##remove grey
+        else
+          elt##.classList##add grey
+  in
+  let upd_evt = React.E.map update_widget push_event in
+  ()
+
 (* admin service *)
 let _ = Eliom_content.Html.D.(
-  let status_widgets = List.map status_widget user_list in
+  let elems = List.map status_widget user_list in
+  let status_widgets = List.map (fun (_,x,_,_) -> x) elems in
+  let event = Eliom_react.Down.of_react admin_push_event in
   Feedback_app.create
     ~path:(Eliom_service.Path ["admin"])
     ~meth:(Eliom_service.Get Eliom_parameter.unit)
@@ -135,8 +164,7 @@ let _ = Eliom_content.Html.D.(
                status_widgets)
             ))
         in
-        AdminNotify.init () >>= fun () ->
-        AdminNotify.listen Update >>= fun () ->
+        let _ = [%client (init_admin_client ~%elems ~%event: unit) ] in
         Lwt.return page
     ))
 
