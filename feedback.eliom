@@ -6,6 +6,24 @@ module Feedback_app =
     let global_data_path = None
   end)
 
+[%%shared
+  type user_vars =
+    | Done
+    | Need_help
+  [@@deriving json]
+
+  type notify_key = AdminNotify | ClientNotify
+  type notify_details = Button of user_vars * bool
+]
+
+(* module for notifying clients *)
+module Notify =
+  Eliom_notif.Make_Simple(struct
+    type identity = int
+    type key = notify_key
+    type notification = notify_details
+  end)
+
 let%client switch_color elt =
   let elt = Eliom_content.Html.To_dom.of_element elt in
   let pressed = Js.string "grey" in
@@ -34,13 +52,6 @@ let user_list =
   close_in file; s
 
 let user_set = StringSet.of_list user_list
-
-[%%shared
-  type user_vars =
-    | Done
-    | Need_help
-  [@@deriving json]
-]
 
 (* users -> user_vars *)
 let user_table = Hashtbl.create 50
@@ -72,7 +83,8 @@ let%shared button_widget name s color_class = Eliom_content.Html.D.(
            switch_color ~%button;
            (* change button state on server *)
            Lwt.async (fun () ->
-             toggle_button (~%name, (if ~%color_class = "done" then Done else Need_help), !state));
+             toggle_button (~%name, (if ~%color_class = "done" then Done else Need_help), !state)) >>= fun () ->
+             notify ;
            Lwt.return ()
         ))
      : unit)
@@ -103,6 +115,8 @@ let _ = Eliom_content.Html.D.(
                 h2 [pcdata "Forbidden access"];
               ]))
          in
+         ClientNotify.init () >>= fun () ->
+         ClientNotify.listen Update >>= fun () ->
          Lwt.return page
     )
 )
@@ -114,10 +128,15 @@ let _ = Eliom_content.Html.D.(
     ~path:(Eliom_service.Path ["admin"])
     ~meth:(Eliom_service.Get Eliom_parameter.unit)
     (fun () () ->
-       Lwt.return
+       let page =
          (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
             (body (
                (h2 [pcdata "Welcome to the admin page"])::
                status_widgets)
-             ))))
+            ))
+        in
+        AdminNotify.init () >>= fun () ->
+        AdminNotify.listen Update >>= fun () ->
+        Lwt.return page
+    ))
 
