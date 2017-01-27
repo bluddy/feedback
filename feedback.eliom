@@ -32,7 +32,7 @@ module Feedback_app =
 
 (* events from server -> admin/student clients *)
 let admin_push_event, admin_push_event_send = React.E.create ()
-let student_push_event, student_push_event_send = React.E.create ()
+(* let student_push_event, student_push_event_send = React.E.create () *)
 
 let user_list =
   let file = open_in "users.txt" in
@@ -79,7 +79,7 @@ let user_table = Hashtbl.create 50
 
 (* server receive student button toggle *)
 let%server notify_server data =
-  Lwt_io.printf "notify_server: %s\n" (notify_details_to_string data);
+  (* Lwt_io.printf "notify_server: %s\n" (notify_details_to_string data); *)
   let () = match data with
     | ButtonChange (name, button, state) ->
         let buttons = Hashtbl.find user_table name in
@@ -89,13 +89,13 @@ let%server notify_server data =
         in
         Hashtbl.replace user_table name new_buttons;
         (* notify the admin client *)
-        admin_push_event_send data;
-        student_push_event_send data
-    | ClearAllDone ->
+        admin_push_event_send data
+        (* student_push_event_send data *)
+    (* | ClearAllDone ->
         (* Clear done buttons *)
         Hashtbl.filter_map_inplace
           (fun k l -> Some(List.filter ((<>) Done) l)) user_table;
-        student_push_event_send data
+        student_push_event_send data *)
   in
   Lwt.return ()
 
@@ -104,7 +104,7 @@ let%client notify_server =
   ~%(Eliom_client.server_function [%derive.json: notify_details] notify_server)
 
 (* admin client's clear_all_button widget *)
-let%shared clear_all_button_widget = Eliom_content.Html.D.(
+(*let%shared clear_all_button_widget = Eliom_content.Html.D.(
   let button = div ~a:[a_class ["clear_button"]] [pcdata "Clear All"] in
   let _ = [%client
     (Lwt.async (fun () ->
@@ -116,10 +116,10 @@ let%shared clear_all_button_widget = Eliom_content.Html.D.(
     ) : unit)
   ] in
   button
-)
+)*)
 
 (* student button widget *)
-let%shared button_widget name s color_class push_event = Eliom_content.Html.D.(
+let%shared button_widget name s color_class = Eliom_content.Html.D.(
   let button = div ~a:[a_class ["button"; color_class; "grey"]] [pcdata s] in
   let _ = [%client
     (let state = ref false in
@@ -143,18 +143,18 @@ let%shared button_widget name s color_class push_event = Eliom_content.Html.D.(
             (* change button state on server *)
             Lwt.async (fun () ->
               let button = if ~%color_class = "done" then Done else Need_help in
-              notify_server @@
-                ButtonChange(~%name, button, !state));
+                notify_server @@
+                  ButtonChange(~%name, button, !state));
             Lwt.return ()
           ))
-      : unit)]
-  in
+     : unit)
+  ] in
   button
 )
 
 (* student service *)
 let _ = Eliom_content.Html.D.(
-  let event = Eliom_react.Down.of_react student_push_event in
+  (* let event = Eliom_react.Down.of_react student_push_event in *)
   Feedback_app.create
     ~path:(Eliom_service.Path [""])
     ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "name"))
@@ -167,8 +167,8 @@ let _ = Eliom_content.Html.D.(
            (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
               (body [
                 h2 [pcdata @@ "Hello "^name];
-                button_widget name "Done Working" "done" event;
-                button_widget name "I Need Help" "help" event;
+                button_widget name "Done Working" "done";
+                button_widget name "I Need Help" "help";
               ]))
          end else
            (Eliom_tools.D.html ~title:"Forbidden" ~css:[["css"; "feedback.css"]]
@@ -207,7 +207,7 @@ let%client init_admin_client status_widget_elems push_event =
         elt##.classList##add (Js.string "grey")
       ) widget_index
   in
-  let _ = React.E.map update_widget push_event in
+  let upd_evt = React.E.map update_widget push_event in
   ()
 
 (* admin service *)
