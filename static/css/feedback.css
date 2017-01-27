@@ -12,6 +12,12 @@ div.button {
   border-radius: 4px;
   margin: 0 10px 0 0;
 }
+div.clear_button {
+  border-radius: 4px;
+  height: 5px;
+  width: 200px;
+  text-align: center;
+}
 .done {
   background-color: green;
 }
