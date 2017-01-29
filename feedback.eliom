@@ -98,11 +98,16 @@ let%server notify_server data =
   let () = match data with
     | ButtonChange (url_name, button, state) ->
         let buttons = match CCHashtbl.get active_table url_name with
-          | Some l -> l | None -> []
+          | Some l -> l
+          | None ->
+            Log.async_write url_name "became active";
+            []
         in
         let new_buttons =
-          if state then button::buttons
-          else List.filter ((<>) button) buttons
+          if state then begin
+            Log.async_write url_name ("pressed the "^user_vars_to_string button^" button");
+            button::buttons
+          end else List.filter ((<>) button) buttons
         in
         Hashtbl.replace active_table url_name new_buttons;
         (* notify the admin client *)
@@ -110,12 +115,14 @@ let%server notify_server data =
         (* student_push_event_send data *)
     | ClearAllDone ->
         (* Clear done buttons *)
+        Log.async_write "admin" "cleared all done";
         Hashtbl.filter_map_inplace
           (fun k l -> Some(List.filter ((<>) Done) l)) active_table;
         Lwt.async (fun () -> student_push_event_send data; Lwt.return ());
         Lwt.async (fun () -> admin_push_event_send data; Lwt.return ());
         ()
     | LogOut ->
+        Log.async_write "admin" "logged out";
         (* Remove all people from active_table *)
         Hashtbl.clear active_table
   in
@@ -179,6 +186,7 @@ let _ = Eliom_content.Html.D.(
              (* add button to active_table - also indicates usage *)
               begin match CCHashtbl.get active_table url_name with
               | None ->
+                  Log.async_write url_name "became active";
                   Hashtbl.replace active_table url_name [];
                   done_btn false, help_btn false
               | Some l ->
