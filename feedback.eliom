@@ -8,6 +8,15 @@ module Feedback_app =
     let global_data_path = None
   end)
 
+module Log = struct
+  let write name str =
+    Ocsigen_messages.accesslog @@
+      Printf.sprintf "%s %s\n" name str
+
+  let async_write name str =
+    Lwt.async (fun () -> write name str; Lwt.return ())
+end
+
 [%%shared
   type user_vars =
     | Done
