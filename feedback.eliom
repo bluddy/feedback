@@ -32,7 +32,7 @@ module Feedback_app =
 
 (* events from server -> admin/student clients *)
 let admin_push_event, admin_push_event_send = React.E.create ()
-(* let student_push_event, student_push_event_send = React.E.create () *)
+let student_push_event, student_push_event_send = React.E.create ()
 
 let user_list =
   let file = open_in "users.txt" in
@@ -91,11 +91,11 @@ let%server notify_server data =
         (* notify the admin client *)
         admin_push_event_send data
         (* student_push_event_send data *)
-    (* | ClearAllDone ->
+    | ClearAllDone ->
         (* Clear done buttons *)
         Hashtbl.filter_map_inplace
           (fun k l -> Some(List.filter ((<>) Done) l)) user_table;
-        student_push_event_send data *)
+        student_push_event_send data
   in
   Lwt.return ()
 
@@ -119,42 +119,48 @@ let%client notify_server =
 )*)
 
 (* student button widget *)
-let%shared button_widget name s color_class = Eliom_content.Html.D.(
-  let button = div ~a:[a_class ["button"; color_class; "grey"]] [pcdata s] in
-  let _ = [%client
-    (let state = ref false in
-      (*
-      let react_to_event = function
-        | ClearAllDone ->
-          state := false;
-          switch_color ~%button !state
-        | _ -> ()
-      in
-        Lwt.async (fun () ->
-        let _ = React.E.map react_to_event ~%push_event in
-        Lwt.return ());*)
-      Lwt.async (fun () ->
+let%client init_student_client name (done_btn, help_btn) event =
+  let buttons = [|done_btn; help_btn|] in
+  let state = [|false; false|] in
+  Eliom_content.Html.D.(
+    let react_to_event = function
+      | ClearAllDone ->
+        state.(0) <- false;
+        switch_color buttons.(0) false
+      | _ -> ()
+    in
+    let react_click idx () =
         (* react to js clicks *)
         Lwt_js_events.clicks
-          (Eliom_content.Html.To_dom.of_element ~%button)
+          (Eliom_content.Html.To_dom.of_element buttons.(idx))
           (fun _ _ ->
-            state := not !state;
-            switch_color ~%button !state;
+            state.(idx) <- not state.(idx);
+            switch_color buttons.(idx) state.(idx);
             (* change button state on server *)
             Lwt.async (fun () ->
-              let button = if ~%color_class = "done" then Done else Need_help in
-                notify_server @@
-                  ButtonChange(~%name, button, !state));
-            Lwt.return ()
-          ))
-     : unit)
-  ] in
-  button
+              let button = match idx with
+                | 0 -> Done | 1 -> Need_help | _ -> failwith "wrong num"
+              in
+              notify_server @@
+                ButtonChange(name, button, state.(idx)));
+            Lwt.return ())
+    in
+    Lwt.async (react_click 0);
+    Lwt.async (react_click 1);
+    let _ = React.E.map react_to_event event in
+    ()
+  )
+
+let forbidden_page = Eliom_content.Html.D.(
 )
 
 (* student service *)
 let _ = Eliom_content.Html.D.(
-  (* let event = Eliom_react.Down.of_react student_push_event in *)
+  let event = Eliom_react.Down.of_react student_push_event in
+  let done_btn =
+    div ~a:[a_class ["button"; "done"; "grey"]] [pcdata "Done Working"] in
+  let help_btn =
+    div ~a:[a_class ["button"; "help"; "grey"]] [pcdata "I Need Help"] in
   Feedback_app.create
     ~path:(Eliom_service.Path [""])
     ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "name"))
@@ -167,18 +173,21 @@ let _ = Eliom_content.Html.D.(
            (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
               (body [
                 h2 [pcdata @@ "Hello "^name];
-                button_widget name "Done Working" "done";
-                button_widget name "I Need Help" "help";
+                done_btn;
+                help_btn;
               ]))
          end else
-           (Eliom_tools.D.html ~title:"Forbidden" ~css:[["css"; "feedback.css"]]
+            (Eliom_tools.D.html ~title:"Forbidden" ~css:[["css"; "feedback.css"]]
               (body [
                 h2 [pcdata "Forbidden access"];
               ]))
-         in
-         Lwt.return page
-    )
-)
+       in
+       let _ =
+         [%client (init_student_client
+                     ~%name (~%done_btn, ~%help_btn) ~%event : unit)]
+       in
+       Lwt.return page
+    ))
 
 (* admin client routine *)
 let%client init_admin_client status_widget_elems push_event =
@@ -207,7 +216,7 @@ let%client init_admin_client status_widget_elems push_event =
         elt##.classList##add (Js.string "grey")
       ) widget_index
   in
-  let upd_evt = React.E.map update_widget push_event in
+  let _ = React.E.map update_widget push_event in
   ()
 
 (* admin service *)
