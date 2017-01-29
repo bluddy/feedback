@@ -39,13 +39,17 @@ let user_list =
   let rec read () =
     try
       let l = input_line file in
-      l::read ()
+      (* comma separated: full_name, url_name *)
+      match String.Split.list_cpy ~by:"," l with
+      | x::[y] -> (y,x)::read () (* notice flip *)
+      | _ -> read ()
     with End_of_file -> []
   in
   let s = read () in
   close_in file; s
 
-let user_set = StringSet.of_list user_list
+(* fast access *)
+let user_tbl = CCHashtbl.of_list user_list
 
 (* student client button behavior *)
 let%client switch_color elt state =
@@ -59,7 +63,7 @@ let%client switch_color elt state =
   else ()
 
 (* admin status widget *)
-let%shared status_widget name buttons = Eliom_content.Html.D.(
+let%shared status_widget url_name full_name buttons = Eliom_content.Html.D.(
   let extra = if List.mem Done buttons then [] else ["grey"] in
   let done_btn =
     div ~a:[a_class @@ ["status_button"; "done"] @ extra] [pcdata ""]
@@ -70,33 +74,33 @@ let%shared status_widget name buttons = Eliom_content.Html.D.(
   in
   let e =
     div ~a:[a_class ["student-status"]] [
-      done_btn; help_btn; div [pcdata name];
+      done_btn; help_btn; div [pcdata full_name];
     ]
   in
-  name, e, done_btn, help_btn
+  url_name, e, done_btn, help_btn
 )
 
 (* active users -> [user_var] *)
-let user_table = Hashtbl.create 50
+let active_table = Hashtbl.create 50
 
 (* server receive student button toggle *)
 let%server notify_server data =
   (* Lwt_io.printf "notify_server: %s\n" (notify_details_to_string data); *)
   let () = match data with
-    | ButtonChange (name, button, state) ->
-        let buttons = Hashtbl.find user_table name in
+    | ButtonChange (url_name, button, state) ->
+        let buttons = Hashtbl.find active_table url_name in
         let new_buttons =
           if state then button::buttons
           else List.filter ((<>) button) buttons
         in
-        Hashtbl.replace user_table name new_buttons;
+        Hashtbl.replace active_table url_name new_buttons;
         (* notify the admin client *)
         admin_push_event_send data
         (* student_push_event_send data *)
     | ClearAllDone ->
         (* Clear done buttons *)
         Hashtbl.filter_map_inplace
-          (fun k l -> Some(List.filter ((<>) Done) l)) user_table;
+          (fun k l -> Some(List.filter ((<>) Done) l)) active_table;
         Lwt.async (fun () -> student_push_event_send data; Lwt.return ());
         Lwt.async (fun () -> admin_push_event_send data; Lwt.return ());
         ()
@@ -108,7 +112,7 @@ let%client notify_server =
   ~%(Eliom_client.server_function [%derive.json: notify_details] notify_server)
 
 (* student button widget *)
-let%client init_student_client name (done_btn, help_btn) event =
+let%client init_student_client url_name (done_btn, help_btn) event =
   let buttons = [|done_btn; help_btn|] in
   let state = [|false; false|] in
   Eliom_content.Html.D.(
@@ -131,7 +135,7 @@ let%client init_student_client name (done_btn, help_btn) event =
                 | 0 -> Done | 1 -> NeedHelp | _ -> failwith "wrong num"
               in
               notify_server @@
-                ButtonChange(name, button, state.(idx)));
+                ButtonChange(url_name, button, state.(idx)));
             Lwt.return ())
     in
     Lwt.async (react_click 0);
@@ -149,21 +153,22 @@ let _ = Eliom_content.Html.D.(
     div ~a:[a_class ["button"; "help"; "grey"]] [pcdata "I Need Help"] in
   Feedback_app.create
     ~path:(Eliom_service.Path [""])
-    ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "name"))
-    (fun name () ->
+    ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "url_name"))
+    (fun url_name () ->
        let page =
          (* check if user is valid *)
-         if StringSet.mem name user_set then begin
+         match CCHashtbl.get user_tbl url_name with
+         | Some full_name ->
            (* add button to hashtable *)
-           if not @@ Hashtbl.mem user_table name
-           then Hashtbl.replace user_table name [] else ();
+           if not @@ Hashtbl.mem active_table url_name
+           then Hashtbl.replace active_table url_name [] else ();
            (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
               (body [
-                h2 [pcdata @@ "Hello "^name];
+                h2 [pcdata @@ "Hello "^full_name];
                 done_btn;
                 help_btn;
               ]))
-         end else
+         | None ->
             (Eliom_tools.D.html ~title:"Forbidden" ~css:[["css"; "feedback.css"]]
               (body [
                 h2 [pcdata "Forbidden access"];
@@ -171,7 +176,7 @@ let _ = Eliom_content.Html.D.(
        in
        let _ =
          [%client (init_student_client
-                     ~%name (~%done_btn, ~%help_btn) ~%event : unit)]
+                     ~%url_name (~%done_btn, ~%help_btn) ~%event : unit)]
        in
        Lwt.return page
     ))
@@ -185,8 +190,8 @@ let%client init_admin_client clear_button status_widget_elems push_event =
     status_widget_elems;
   (* update a widget via an event *)
   let update_widget = function
-    | ButtonChange(name, button, state) ->
-        let (don, help) = Hashtbl.find widget_index name in
+    | ButtonChange(url_name, button, state) ->
+        let (don, help) = Hashtbl.find widget_index url_name in
         let elt = match button with
           | Done -> don
           | NeedHelp -> help
@@ -223,10 +228,10 @@ let _ = Eliom_content.Html.D.(
     ~meth:(Eliom_service.Get Eliom_parameter.unit)
     (fun () () ->
       (* create elems to match active users, status *)
-      let elems = List.filter_map (fun nm ->
-        match CCHashtbl.get user_table nm with
+      let elems = List.filter_map (fun (url_name,full_name) ->
+        match CCHashtbl.get active_table url_name with
         | None -> None
-        | Some l -> Some (status_widget nm l))
+        | Some l -> Some (status_widget url_name full_name l))
         user_list in
       let status_widgets = List.map (fun (_,x,_,_) -> x) elems in
       let page =
