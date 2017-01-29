@@ -95,28 +95,15 @@ let%server notify_server data =
         (* Clear done buttons *)
         Hashtbl.filter_map_inplace
           (fun k l -> Some(List.filter ((<>) Done) l)) user_table;
-        student_push_event_send data
+        Lwt.async (fun () -> student_push_event_send data; Lwt.return ());
+        Lwt.async (fun () -> admin_push_event_send data; Lwt.return ());
+        ()
   in
   Lwt.return ()
 
 (* stub for student client->server RPC *)
 let%client notify_server =
   ~%(Eliom_client.server_function [%derive.json: notify_details] notify_server)
-
-(* admin client's clear_all_button widget *)
-(*let%shared clear_all_button_widget = Eliom_content.Html.D.(
-  let button = div ~a:[a_class ["clear_button"]] [pcdata "Clear All"] in
-  let _ = [%client
-    (Lwt.async (fun () ->
-    Lwt_js_events.clicks
-      (Eliom_content.Html.To_dom.of_element ~%button)
-      (fun _ _ ->
-         Lwt.async (fun () -> notify_server ClearAllDone);
-         Lwt.return ())
-    ) : unit)
-  ] in
-  button
-)*)
 
 (* student button widget *)
 let%client init_student_client name (done_btn, help_btn) event =
@@ -150,9 +137,6 @@ let%client init_student_client name (done_btn, help_btn) event =
     let _ = React.E.map react_to_event event in
     ()
   )
-
-let forbidden_page = Eliom_content.Html.D.(
-)
 
 (* student service *)
 let _ = Eliom_content.Html.D.(
@@ -190,7 +174,7 @@ let _ = Eliom_content.Html.D.(
     ))
 
 (* admin client routine *)
-let%client init_admin_client status_widget_elems push_event =
+let%client init_admin_client clear_button status_widget_elems push_event =
   (* save the widgets *)
   let widget_index = Hashtbl.create 50 in
   List.iter (fun (nm, _, don, help) ->
@@ -216,6 +200,14 @@ let%client init_admin_client status_widget_elems push_event =
         elt##.classList##add (Js.string "grey")
       ) widget_index
   in
+  let react_clear_click () =
+    Lwt_js_events.clicks
+      (Eliom_content.Html.To_dom.of_element clear_button)
+      (fun _ _ ->
+         Lwt.async (fun () -> notify_server ClearAllDone);
+         Lwt.return ())
+  in
+  Lwt.async react_clear_click;
   let _ = React.E.map update_widget push_event in
   ()
 
@@ -224,6 +216,7 @@ let _ = Eliom_content.Html.D.(
   let elems = List.map status_widget user_list in
   let status_widgets = List.map (fun (_,x,_,_) -> x) elems in
   let event = Eliom_react.Down.of_react admin_push_event in
+  let clear_button = div ~a:[a_class ["clear_button"]] [pcdata "Clear All"] in
   Feedback_app.create
     ~path:(Eliom_service.Path ["admin"])
     ~meth:(Eliom_service.Get Eliom_parameter.unit)
@@ -232,11 +225,11 @@ let _ = Eliom_content.Html.D.(
          (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
             (body (
                (h2 [pcdata "Welcome to the admin page"])::
-               (*clear_all_button_widget::*)
+               clear_button::
                status_widgets)
             ))
         in
-        let _ = [%client (init_admin_client ~%elems ~%event: unit) ] in
+        let _ = [%client (init_admin_client ~%clear_button ~%elems ~%event: unit) ] in
         Lwt.return page
     ))
 
