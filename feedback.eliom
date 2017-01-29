@@ -154,10 +154,12 @@ let%client init_student_client url_name (done_btn, help_btn) event =
 (* student service *)
 let _ = Eliom_content.Html.D.(
   let event = Eliom_react.Down.of_react student_push_event in
-  let done_btn =
-    div ~a:[a_class ["button"; "done"; "grey"]] [pcdata "Done Working"] in
-  let help_btn =
-    div ~a:[a_class ["button"; "help"; "grey"]] [pcdata "I Need Help"] in
+  let btn nm lbl pressed =
+    let extra = if pressed then [] else ["grey"] in
+    div ~a:[a_class @@ ["button"; nm] @ extra] [pcdata lbl]
+  in
+  let help_btn pressed = btn "help" "I Need Help" pressed in
+  let done_btn pressed = btn "done" "Done Working" pressed in
   Feedback_app.create
     ~path:(Eliom_service.Path [""])
     ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "url_name"))
@@ -166,24 +168,33 @@ let _ = Eliom_content.Html.D.(
          (* check if user is valid *)
          match CCHashtbl.get user_tbl url_name with
          | Some full_name ->
-           (* add button to hashtable *)
-           if not @@ Hashtbl.mem active_table url_name
-           then Hashtbl.replace active_table url_name [] else ();
-           (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
-              (body [
-                h2 [pcdata @@ "Hello "^full_name];
-                done_btn;
-                help_btn;
-              ]))
+            let done_btn, help_btn =
+             (* add button to active_table - also indicates usage *)
+              begin match CCHashtbl.get active_table url_name with
+              | None ->
+                  Hashtbl.replace active_table url_name [];
+                  done_btn false, help_btn false
+              | Some l ->
+                  done_btn (List.mem Done l), help_btn (List.mem NeedHelp l)
+              end
+            in
+            (* init student client *)
+            let _ =
+              [%client (init_student_client
+                          ~%url_name (~%done_btn, ~%help_btn) ~%event : unit)]
+            in
+            (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
+                (body [
+                  h2 [pcdata @@ "Hello "^full_name];
+                  done_btn;
+                  help_btn;
+                ]))
+          (* not a valid user *)
          | None ->
             (Eliom_tools.D.html ~title:"Forbidden" ~css:[["css"; "feedback.css"]]
               (body [
                 h2 [pcdata "Forbidden access"];
               ]))
-       in
-       let _ =
-         [%client (init_student_client
-                     ~%url_name (~%done_btn, ~%help_btn) ~%event : unit)]
        in
        Lwt.return page
     ))
