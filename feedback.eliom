@@ -72,9 +72,16 @@ let%shared status_widget url_name full_name buttons = Eliom_content.Html.D.(
   let help_btn =
     div ~a:[a_class @@ ["status_button"; "help"] @ extra] [pcdata ""]
   in
+  let short_name =
+    match String.Split.list_cpy ~by:" " full_name with
+    | [nm]    -> nm
+    | nm::nms ->
+      Printf.sprintf "%s %c" nm @@ (List.hd nms).[0]
+    | _       -> ""
+  in
   let e =
     div ~a:[a_class ["student-status"]] [
-      done_btn; help_btn; div [pcdata full_name];
+      done_btn; help_btn; div [pcdata short_name];
     ]
   in
   url_name, e, done_btn, help_btn

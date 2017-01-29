@@ -1,4 +1,30 @@
-jim,blah
-jerry,barf
-john,456
-ben,123
+Jane Brusilovsky,jbrusil1
+Camilla Camacho Sanchez,ccamach5
+Alex Condotti,acondotti1
+Theo Cooper,tcoope21
+Tianyu Ding,tding1
+Zhao Fan,zfan7
+Ayushi Gautam,agautam2
+Annie Hou,ahou4
+Peter Ji,pji2
+Jeesoo Kim,jkim502
+Anand Koshy,akoshy1
+Sion Lee,slee454
+Nick Lemanski,rlemans1
+Becky Liao,rliao5
+Theo Livas,tlivas1
+Polly Ma,pollyma
+Yuqi Ma,yma27
+Beatriz Medeiros,bmedeir1
+Ronak Mehta,rmehta13
+Tan Nguyen,tan_nguyen
+Kelvin Qian,kqian2
+Lukas Seebacher,lseebac2
+Stefanie Shirley,sshirle1
+Will Tobey,wtobey1
+Maria Torres,mtorre23
+Wai-Kin Tsui,wtsui1
+Aim,rwonghi1
+Jerry Yao,jyao14
+Corina Zisman,czisman1
+
