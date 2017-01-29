@@ -11,7 +11,7 @@ module Feedback_app =
 [%%shared
   type user_vars =
     | Done
-    | Need_help
+    | NeedHelp
   [@@deriving json]
 
   type notify_details =
@@ -21,7 +21,7 @@ module Feedback_app =
 
   let user_vars_to_string = function
     | Done -> "Done"
-    | Need_help -> "Need_help"
+    | NeedHelp -> "NeedHelp"
 
   let notify_details_to_string = function
     | ButtonChange(s, u, b) ->
@@ -59,12 +59,14 @@ let%client switch_color elt state =
   else ()
 
 (* admin status widget *)
-let%shared status_widget name = Eliom_content.Html.D.(
+let%shared status_widget name buttons = Eliom_content.Html.D.(
+  let extra = if List.mem Done buttons then [] else ["grey"] in
   let done_btn =
-    div ~a:[a_class ["status_button"; "done"; "grey"]] [pcdata ""]
+    div ~a:[a_class @@ ["status_button"; "done"] @ extra] [pcdata ""]
   in
+  let extra = if List.mem NeedHelp buttons then [] else ["grey"] in
   let help_btn =
-    div ~a:[a_class ["status_button"; "help"; "grey"]] [pcdata ""]
+    div ~a:[a_class @@ ["status_button"; "help"] @ extra] [pcdata ""]
   in
   let e =
     div ~a:[a_class ["student-status"]] [
@@ -74,7 +76,7 @@ let%shared status_widget name = Eliom_content.Html.D.(
   name, e, done_btn, help_btn
 )
 
-(* users -> user_vars *)
+(* active users -> [user_var] *)
 let user_table = Hashtbl.create 50
 
 (* server receive student button toggle *)
@@ -126,7 +128,7 @@ let%client init_student_client name (done_btn, help_btn) event =
             (* change button state on server *)
             Lwt.async (fun () ->
               let button = match idx with
-                | 0 -> Done | 1 -> Need_help | _ -> failwith "wrong num"
+                | 0 -> Done | 1 -> NeedHelp | _ -> failwith "wrong num"
               in
               notify_server @@
                 ButtonChange(name, button, state.(idx)));
@@ -150,8 +152,9 @@ let _ = Eliom_content.Html.D.(
     ~meth:(Eliom_service.Get Eliom_parameter.(suffix @@ string "name"))
     (fun name () ->
        let page =
+         (* check if user is valid *)
          if StringSet.mem name user_set then begin
-           (* add to hashtable *)
+           (* add button to hashtable *)
            if not @@ Hashtbl.mem user_table name
            then Hashtbl.replace user_table name [] else ();
            (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
@@ -186,7 +189,7 @@ let%client init_admin_client clear_button status_widget_elems push_event =
         let (don, help) = Hashtbl.find widget_index name in
         let elt = match button with
           | Done -> don
-          | Need_help -> help
+          | NeedHelp -> help
         in
         let elt = Eliom_content.Html.To_dom.of_element elt in
         let grey = Js.string "grey" in
@@ -213,23 +216,29 @@ let%client init_admin_client clear_button status_widget_elems push_event =
 
 (* admin service *)
 let _ = Eliom_content.Html.D.(
-  let elems = List.map status_widget user_list in
-  let status_widgets = List.map (fun (_,x,_,_) -> x) elems in
   let event = Eliom_react.Down.of_react admin_push_event in
   let clear_button = div ~a:[a_class ["clear_button"]] [pcdata "Clear All"] in
   Feedback_app.create
     ~path:(Eliom_service.Path ["admin"])
     ~meth:(Eliom_service.Get Eliom_parameter.unit)
     (fun () () ->
-       let page =
-         (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
-            (body (
-               (h2 [pcdata "Welcome to the admin page"])::
-               clear_button::
-               status_widgets)
-            ))
-        in
-        let _ = [%client (init_admin_client ~%clear_button ~%elems ~%event: unit) ] in
-        Lwt.return page
+      (* create elems to match active users, status *)
+      let elems = List.filter_map (fun nm ->
+        match CCHashtbl.get user_table nm with
+        | None -> None
+        | Some l -> Some (status_widget nm l))
+        user_list in
+      let status_widgets = List.map (fun (_,x,_,_) -> x) elems in
+      let page =
+        (Eliom_tools.D.html ~title:"Feedback" ~css:[["css"; "feedback.css"]]
+           (body (
+              (h2 [pcdata "Welcome to the admin page"])::
+              clear_button::
+              status_widgets)
+           ))
+       in
+       let _ = [%client (init_admin_client ~%clear_button ~%elems ~%event: unit) ]
+       in
+       Lwt.return page
     ))
 
