@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+sudo PATH=$PATH OCAMLPATH=$OCAMLPATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH make run.opt
